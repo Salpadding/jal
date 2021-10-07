@@ -60,8 +60,8 @@ class TcpSelector(val port: Int) {
         // create a socket
         val ch = ServerSocketChannel.open()
         // bind to port
-        val addr = InetSocketAddress(port)
-        ch.bind(addr)
+        ch.bind(InetSocketAddress(port))
+        ch.socket().reuseAddress = true
         // enable nio
         ch.configureBlocking(false)
 
@@ -75,11 +75,15 @@ class TcpSelector(val port: Int) {
             // block until event emit
             val n = selector.select()
 
-            println("n = $n")
-            val keys = selector.selectedKeys().iterator()
+            if(n == 0)
+                continue
 
-            while (keys.hasNext()) {
-                val k = keys.next()
+            println("n = $n")
+            val iter = selector.selectedKeys().iterator()
+
+            while (iter.hasNext()) {
+                val k = iter.next()
+                iter.remove()
 
                 if (k.isAcceptable) {
                     val client = (k.channel() as ServerSocketChannel).accept()
@@ -93,6 +97,7 @@ class TcpSelector(val port: Int) {
                             BUF_SIZE
                         )
                     )
+                    continue
                 }
 
                 if (k.isReadable) {
@@ -105,13 +110,13 @@ class TcpSelector(val port: Int) {
                         buf.flip()
                         System.out.write(buf.array(), 0, len)
                         client.write(buf)
-                    } else if (len < 0) {
+                    } else if (len < 0){
                         println("close remote")
-                        k.channel().close()
+                        k.cancel()
+                        client.close()
                     }
+                    continue
                 }
-                // remove
-                keys.remove()
             }
         }
     }
