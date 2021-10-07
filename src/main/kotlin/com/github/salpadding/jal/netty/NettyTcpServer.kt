@@ -1,16 +1,19 @@
 package com.github.salpadding.jal.netty
 
+import io.netty.bootstrap.Bootstrap
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.buffer.ByteBuf
-import io.netty.channel.ChannelHandlerContext
-import io.netty.channel.ChannelInboundHandlerAdapter
-import io.netty.channel.ChannelInitializer
-import io.netty.channel.ChannelOption
+import io.netty.buffer.Unpooled
+import io.netty.channel.*
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
+import io.netty.channel.socket.nio.NioSocketChannel
+import java.net.InetSocketAddress
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
-class NettyServer(val port: Int) {
+class NettyTcpServer(val port: Int) {
     // start listening on port
     fun start() {
         // boss group, accept clients
@@ -48,7 +51,7 @@ class NettyServer(val port: Int) {
     companion object {
         @JvmStatic
         fun main(args: Array<String>) {
-            val s = NettyServer(8080)
+            val s = NettyTcpServer(8080)
             s.start()
         }
     }
@@ -89,4 +92,51 @@ class NettyServerHandler : ChannelInboundHandlerAdapter() {
     companion object {
         const val BUF_SIZE = 4096
     }
+}
+
+class NettyTcpClient(val host: String, val port: Int) : ChannelInitializer<SocketChannel>() {
+    fun start() {
+        val group = NioEventLoopGroup()
+        val bootstrap = Bootstrap()
+
+        bootstrap.group(group)
+            .channel(NioSocketChannel::class.java)
+            .handler(this)
+
+        val future = bootstrap.connect(InetSocketAddress(host, port)).sync()
+        future.channel().closeFuture().get()
+    }
+
+    override fun initChannel(ch: SocketChannel) {
+        ch.pipeline().addLast(NettyClientHandler())
+    }
+
+    companion object {
+        @JvmStatic
+        fun main(args: Array<String>) {
+            val cli = NettyTcpClient("127.0.0.1", 8080)
+            cli.start()
+        }
+    }
+}
+
+class NettyClientHandler : ChannelInboundHandlerAdapter() {
+    private val msg = "hello world\n".toByteArray()
+
+    override fun channelActive(ctx: ChannelHandlerContext) {
+        val th = Thread {
+            while (true) {
+                println("send message to server")
+                
+                val buf = Unpooled.buffer()
+                buf.writeBytes(msg)
+                ctx.channel().writeAndFlush(buf)
+
+                Thread.sleep(1000)
+            }
+        }
+
+        th.start()
+    }
+
 }
